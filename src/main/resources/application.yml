@@ -1,37 +1,43 @@
 spring:
+  application:
+    name: jfcApplication
   datasource:
-    url: jdbc:mysql://localhost:3306/jpa_database?useSSL=false
+    url: jdbc:mysql://localhost:3306/jpa_database
     username: root
     password: imishaan
-  jpa:
-    hibernate:
-      ddl-auto: update
-    show-sql: true
+server:
+  port: 8080
 
-  kafka:
+kafka:
+  producer:
     bootstrap-servers: localhost:9092
-    consumer:
-      group-id: "jfc-group"
-      auto-offset-reset: "earliest"
-    listener:
-      ack-mode: "record"
-    template:
-      default-topic: "job-ingestion"
+    key-serializer: org.apache.kafka.common.serialization.IntegerSerializer
+    value-serializer: org.apache.kafka.common.serialization.StringSerializer
+  bootstrap-servers: localhost:9092
+  consumer:
+    bootstrap-servers: localhost:9092,localhost:9093,localhost:9094
+    key-deserializer: org.apache.kafka.common.serialization.IntegerDeserializer
+    value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    group-id: jfc-group
+    auto-offset-reset: earliest
+  listener:
+    ack-mode: record
+  template:
+    default-topic: job-ingestion
 
 logging:
   level:
     org:
       apache:
         kafka: ERROR
-      springframework:
-        kafka: ERROR
+    springframework:
+      kafka: ERROR
     kafka: ERROR
 
-# Kafka topic names
 jfc:
   topics:
-    ingestion: "job-ingestion"
-    status: "common-job-status"
-    toolA: "toolA-destination"
-    toolB: "toolB-destination"
-    toolC: "toolC-destination"
+    ingestion: job-ingestion
+    status: common-job-status
+    toolA: toolA-destination
+    toolB: toolB-destination
+    toolC: toolC-destination

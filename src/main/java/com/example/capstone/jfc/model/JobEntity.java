@@ -31,6 +31,19 @@ public class JobEntity {
     @Column(name = "timestamp_updated")
     private LocalDateTime timestampUpdated;
 
+    @PrePersist
+    public void onPrePersist() {
+        if(timestampCreated == null) {
+            timestampCreated = LocalDateTime.now();
+        }
+        timestampUpdated = LocalDateTime.now();
+    }
+
+    @PreUpdate
+    public void onPreUpdate() {
+        timestampUpdated = LocalDateTime.now();
+    }
+
     public String getJobId() {
         return jobId;
     }
