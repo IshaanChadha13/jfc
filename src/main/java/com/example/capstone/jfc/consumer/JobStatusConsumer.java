@@ -22,14 +22,10 @@ public class JobStatusConsumer {
     }
 
     @KafkaListener(topics = "#{ '${jfc.topics.status}' }", groupId = "jfc-status-consumer")
-    public void onStatusMessage(String statusMessage) {
+    public void onStatusMessage(Map<String, Object> statusMessage) {
         try {
-
-            ObjectMapper objectMapper = new ObjectMapper();
-            Map<String, Object> messageData = objectMapper.readValue(statusMessage, new TypeReference<Map<String, Object>>() {});
-
-            String jobId = (String) messageData.get("jobId");
-            String statusString = (String) messageData.get("status");
+            String jobId = (String) statusMessage.get("jobId");
+            String statusString = (String) statusMessage.get("status");
 
             JobStatus newStatus = JobStatus.valueOf(statusString);
 

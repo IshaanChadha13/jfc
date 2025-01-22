@@ -25,16 +25,12 @@ public class JobIngestionConsumer {
     }
 
     @KafkaListener(topics = "#{ '${jfc.topics.ingestion}' }", groupId = "jfc-ingestion-consumer")
-    public void onMessage(String jobMessage) {
+    public void onMessage(Map<String, Object> jobMessage) {
         try {
-
-            ObjectMapper objectMapper = new ObjectMapper();
-            Map<String, Object> jobData = objectMapper.readValue(jobMessage, new TypeReference<Map<String, Object>>() {});
-
-            String jobId = (String) jobData.get("jobId");
-            String toolId = (String) jobData.get("toolId");
-            String payload = (String) jobData.get("payload");
-            Integer priority = (Integer) jobData.getOrDefault("priority", 0);
+            String jobId = (String) jobMessage.get("jobId");
+            String toolId = (String) jobMessage.get("toolId");
+            String payload = (String) jobMessage.get("payload");
+            Integer priority = (Integer) jobMessage.getOrDefault("priority", 0);
 
             JobEntity jobEntity = new JobEntity();
             jobEntity.setJobId(jobId);
@@ -49,6 +45,7 @@ public class JobIngestionConsumer {
             LOGGER.info("Inserted new job with ID {} for tool {}", jobId, toolId);
         } catch (Exception e) {
             LOGGER.error("Error processing job ingestion message", e);
+            // Optionally handle errors (DLQ, etc.)
         }
     }
 }

@@ -12,10 +12,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
@@ -29,7 +26,7 @@ public class BatchDispatcher {
     private final ToolConfigRepository toolConfigRepository;
     private final JobProducer jobProducer;
 
-    private final ExecutorService executorService = Executors.newFixedThreadPool(5);
+    private final ExecutorService executorService = Executors.newFixedThreadPool(3);
 
     public BatchDispatcher(JobRepository jobRepository,
                            ToolConfigRepository toolConfigRepository,
@@ -54,9 +51,6 @@ public class BatchDispatcher {
         // Group jobs by tool_id
         Map<String, List<JobEntity>> jobsByTool = newJobs.stream()
                 .collect(Collectors.groupingBy(JobEntity::getToolId));
-//        for (JobEntity job : newJobs) {
-//            jobsByTool.computeIfAbsent(job.getToolId(), k -> new java.util.ArrayList<>()).add(job);
-//        }
 
         for (String toolId : jobsByTool.keySet()) {
             executorService.submit(() -> processToolBatch(toolId, jobsByTool.get(toolId)));
@@ -76,7 +70,7 @@ public class BatchDispatcher {
             String destinationTopic = config.getDestinationTopic();
 
                 // 1) Sort or filter if needed by priority, time, etc.
-                // toolJobs.sort(Comparator.comparing(JobEntity::getPriority).reversed());
+            toolJobs.sort(Comparator.comparing(JobEntity::getPriority).reversed());
 
                 // 2) Take up to maxConcurrent jobs for this batch
             List<JobEntity> batch = toolJobs.stream()

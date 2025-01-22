@@ -12,9 +12,11 @@ public class JobEntity {
     @Column(name = "job_id", nullable = false, updatable = false)
     private String jobId;
 
+    @Id
     @Column(name = "tool_id")
     private String toolId;
 
+    @Lob
     @Column(name = "payload")
     private String payload; // could store JSON as string
 
@@ -30,6 +32,8 @@ public class JobEntity {
 
     @Column(name = "timestamp_updated")
     private LocalDateTime timestampUpdated;
+
+    public JobEntity() {}
 
     @PrePersist
     public void onPrePersist() {
