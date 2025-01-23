@@ -45,7 +45,6 @@ public class JobIngestionConsumer {
             LOGGER.info("Inserted new job with ID {} for tool {}", jobId, toolId);
         } catch (Exception e) {
             LOGGER.error("Error processing job ingestion message", e);
-            // Optionally handle errors (DLQ, etc.)
         }
     }
 }

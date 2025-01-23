@@ -6,9 +6,12 @@ import com.example.capstone.jfc.model.ToolConfigEntity;
 import com.example.capstone.jfc.producer.JobProducer;
 import com.example.capstone.jfc.repository.JobRepository;
 import com.example.capstone.jfc.repository.ToolConfigRepository;
-import com.fasterxml.jackson.core.JsonProcessingException;
+import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
@@ -26,7 +29,14 @@ public class BatchDispatcher {
     private final ToolConfigRepository toolConfigRepository;
     private final JobProducer jobProducer;
 
-    private final ExecutorService executorService = Executors.newFixedThreadPool(3);
+    @Value("${dispatcher.thread.pool.size:3}")
+    private int threadPoolSize;
+
+    @Value("${dispatcher.jobpage.size:500}")
+    private int jobPageSize;
+
+//    private final ExecutorService executorService = Executors.newFixedThreadPool(3);
+    private ExecutorService executorService;
 
     public BatchDispatcher(JobRepository jobRepository,
                            ToolConfigRepository toolConfigRepository,
@@ -36,28 +46,68 @@ public class BatchDispatcher {
         this.jobProducer = jobProducer;
     }
 
-    // Runs every 10 seconds (for example)
+    @PostConstruct
+    public void init() {
+        this.executorService = Executors.newFixedThreadPool(threadPoolSize);
+    }
+
     @Scheduled(fixedRate = 10000)
-    public void dispatchJobs() throws JsonProcessingException {
+    public void dispatchJobs() {
         LOGGER.info("Starting batch dispatch...");
 
-        // Find all NEW jobs
-        List<JobEntity> newJobs = jobRepository.findByStatus(JobStatus.NEW);
+        int pageNumber = 0;
+        Page<JobEntity> page;
+        do {
+            PageRequest pageRequest = PageRequest.of(pageNumber, jobPageSize);
+            page = jobRepository.findByStatus(JobStatus.NEW, pageRequest);
 
-        if (newJobs.isEmpty()) {
-            LOGGER.info("No NEW jobs found. Nothing to dispatch.");
-            return;
-        }
-        // Group jobs by tool_id
-        Map<String, List<JobEntity>> jobsByTool = newJobs.stream()
-                .collect(Collectors.groupingBy(JobEntity::getToolId));
+            // If the page has no content, log and break out.
+            if (page.isEmpty()) {
+                LOGGER.info("No NEW jobs found on page {}. Nothing to dispatch.", pageNumber);
+                break;
+            }
 
-        for (String toolId : jobsByTool.keySet()) {
-            executorService.submit(() -> processToolBatch(toolId, jobsByTool.get(toolId)));
-        }
+            // Get the list of NEW jobs from this page
+            List<JobEntity> newJobs = page.getContent();
 
-        LOGGER.info("Batch dispatch triggered for {} tool(s).", jobsByTool.size());
+            // Group by toolId
+            Map<String, List<JobEntity>> jobsByTool = newJobs.stream()
+                    .collect(Collectors.groupingBy(JobEntity::getToolId));
+
+            // Submit each tool’s batch for concurrent processing
+            for (String toolId : jobsByTool.keySet()) {
+                executorService.submit(() -> processToolBatch(toolId, jobsByTool.get(toolId)));
+            }
+
+            LOGGER.info("Batch dispatch triggered for {} tool(s) on page {}.", jobsByTool.size(), pageNumber);
+
+            pageNumber++;
+
+        } while (page.hasNext());
     }
+
+    // Runs every 10 seconds (for example)
+//    @Scheduled(fixedRate = 10000)
+//    public void dispatchJobs() throws JsonProcessingException {
+//        LOGGER.info("Starting batch dispatch...");
+//
+//        // Find all NEW jobs
+//        List<JobEntity> newJobs = jobRepository.findByStatus(JobStatus.NEW);
+//
+//        if (newJobs.isEmpty()) {
+//            LOGGER.info("No NEW jobs found. Nothing to dispatch.");
+//            return;
+//        }
+//
+//        Map<String, List<JobEntity>> jobsByTool = newJobs.stream()
+//                .collect(Collectors.groupingBy(JobEntity::getToolId));
+//
+//        for (String toolId : jobsByTool.keySet()) {
+//            executorService.submit(() -> processToolBatch(toolId, jobsByTool.get(toolId)));
+//        }
+//
+//        LOGGER.info("Batch dispatch triggered for {} tool(s).", jobsByTool.size());
+//    }
     private void processToolBatch(String toolId, List<JobEntity> toolJobs) {
         try {
             ToolConfigEntity config = toolConfigRepository.findById(toolId).orElse(null);
@@ -69,10 +119,8 @@ public class BatchDispatcher {
             int maxConcurrent = config.getMaxConcurrentJobs();
             String destinationTopic = config.getDestinationTopic();
 
-                // 1) Sort or filter if needed by priority, time, etc.
             toolJobs.sort(Comparator.comparing(JobEntity::getPriority).reversed());
 
-                // 2) Take up to maxConcurrent jobs for this batch
             List<JobEntity> batch = toolJobs.stream()
                     .limit(maxConcurrent)
                     .collect(Collectors.toList());
@@ -85,7 +133,6 @@ public class BatchDispatcher {
             LOGGER.info("Dispatching {} jobs for tool {} on thread {}",
                     batch.size(), toolId, Thread.currentThread().getName());
 
-                // 3) Build a SINGLE message containing all jobs in this batch
             List<Map<String, Object>> jobsInBatch = new ArrayList<>();
             for (JobEntity job : batch) {
                     Map<String, Object> jobData = new HashMap<>();
@@ -96,15 +143,12 @@ public class BatchDispatcher {
                     jobsInBatch.add(jobData);
                 }
 
-                // The overall "batch" message
                 Map<String, Object> batchMessage = new HashMap<>();
                 batchMessage.put("toolId", toolId);
                 batchMessage.put("jobs", jobsInBatch);
 
-                // 4) Produce the single "batch" to the tool's destination topic
                 jobProducer.sendJobToTool(destinationTopic, batchMessage);
 
-                // 5) Update each job's status to PENDING
                 for (JobEntity job : batch) {
                     job.setStatus(JobStatus.PENDING);
                 }

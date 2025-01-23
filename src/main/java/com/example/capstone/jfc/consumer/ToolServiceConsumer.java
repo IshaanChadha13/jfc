@@ -28,14 +28,6 @@ public class ToolServiceConsumer {
         this.kafkaTemplate = kafkaTemplate;
     }
 
-    /**
-     * Single method that listens to multiple tool topics:
-     *   - toolA-destination
-     *   - toolB-destination
-     *   - toolC-destination
-     *
-     * Use a comma-separated list in 'topics' or a pattern if you want.
-     */
     @KafkaListener(topics = {
             "${jfc.topics.toolA}",
             "${jfc.topics.toolB}",
@@ -50,7 +42,6 @@ public class ToolServiceConsumer {
         }
         Map<?, ?> batchMessage = (Map<?, ?>) value;
 
-//        String jobId = (String) jobMessage.get("jobId");
         String toolId = (String) batchMessage.get("toolId");
 
         LOGGER.info("Received a BATCH for tool {}. Simulating processing...", toolId);
@@ -63,7 +54,6 @@ public class ToolServiceConsumer {
             return;
         }
 
-        // 1) Immediately send PROGRESS status for each job
         for (Map<String, Object> jobData : jobsInBatch) {
             String jobId = (String) jobData.get("jobId");
             Map<String, Object> progressMessage = Map.of(

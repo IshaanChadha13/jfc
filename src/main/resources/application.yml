@@ -23,6 +23,14 @@ spring:
     template:
       default-topic: "job-ingestion"
 
+# Dispatcher-related configuration
+dispatcher:
+  thread:
+    pool:
+      size: 5            # <--- Configurable thread pool size (example)
+  jobpage:
+    size: 500           # <--- Maximum number of NEW jobs fetched per page
+
 ---
 spring:
   config:
@@ -61,3 +69,4 @@ jfc:
     toolA: "toolA-destination"
     toolB: "toolB-destination"
     toolC: "toolC-destination"
+

@@ -21,9 +21,6 @@ public class JobProducer {
     }
 
     public void sendJobToTool(String topic, Map<String, Object> jobData) throws JsonProcessingException {
-        ObjectMapper objectMapper = new ObjectMapper();
-        String jsonValue = objectMapper.writeValueAsString(jobData);
         kafkaTemplate.send(topic, jobData);
-        LOGGER.info("Sent job to topic {} with data: {}", topic, jsonValue);
     }
 }

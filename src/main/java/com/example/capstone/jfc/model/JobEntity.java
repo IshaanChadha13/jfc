@@ -12,7 +12,6 @@ public class JobEntity {
     @Column(name = "job_id", nullable = false, updatable = false)
     private String jobId;
 
-    @Id
     @Column(name = "tool_id")
     private String toolId;
 
