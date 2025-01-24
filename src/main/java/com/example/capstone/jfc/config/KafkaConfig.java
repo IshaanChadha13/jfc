@@ -23,9 +23,6 @@ public class KafkaConfig {
     @Value("${jfc.topics.toolC}")
     private String toolCTopic;
 
-    /**
-     * Optionally create topics automatically if auto-create is enabled.
-     */
     @Bean
     public NewTopic ingestionTopic() {
         return new NewTopic(ingestionTopic, 3, (short) 1);

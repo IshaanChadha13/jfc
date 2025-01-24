@@ -2,6 +2,7 @@ package com.example.capstone.jfc.consumer;
 
 import com.example.capstone.jfc.model.JobEntity;
 import com.example.capstone.jfc.model.JobStatus;
+import com.example.capstone.jfc.producer.JobProducer;
 import com.example.capstone.jfc.repository.JobRepository;
 import com.fasterxml.jackson.core.type.TypeReference;
 import org.slf4j.Logger;
@@ -13,6 +14,7 @@ import java.util.Map;
 
 @Component
 public class JobStatusConsumer {
+
     private static final Logger LOGGER = LoggerFactory.getLogger(JobStatusConsumer.class);
 
     private final JobRepository jobRepository;
@@ -24,17 +26,20 @@ public class JobStatusConsumer {
     @KafkaListener(topics = "#{ '${jfc.topics.status}' }", groupId = "jfc-status-consumer")
     public void onStatusMessage(Map<String, Object> statusMessage) {
         try {
+            // e.g. { "jobId": "123", "toolId": "ToolA", "status": "SUCCESS" }
             String jobId = (String) statusMessage.get("jobId");
-            String statusString = (String) statusMessage.get("status");
+            String statusStr = (String) statusMessage.get("status");
 
-            JobStatus newStatus = JobStatus.valueOf(statusString);
+            JobStatus newStatus = JobStatus.valueOf(statusStr);
 
+            // Fetch job from DB
             JobEntity job = jobRepository.findById(jobId).orElse(null);
             if (job == null) {
                 LOGGER.warn("Received status update for unknown job ID: {}", jobId);
                 return;
             }
 
+            // Update final state
             job.setStatus(newStatus);
             jobRepository.save(job);
 

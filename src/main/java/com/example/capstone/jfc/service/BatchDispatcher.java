@@ -6,37 +6,27 @@ import com.example.capstone.jfc.model.ToolConfigEntity;
 import com.example.capstone.jfc.producer.JobProducer;
 import com.example.capstone.jfc.repository.JobRepository;
 import com.example.capstone.jfc.repository.ToolConfigRepository;
-import jakarta.annotation.PostConstruct;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.stream.Collectors;
 
 @Service
 public class BatchDispatcher {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(BatchDispatcher.class);
 
+
     private final JobRepository jobRepository;
     private final ToolConfigRepository toolConfigRepository;
     private final JobProducer jobProducer;
 
-    @Value("${dispatcher.thread.pool.size:3}")
-    private int threadPoolSize;
-
-    @Value("${dispatcher.jobpage.size:500}")
-    private int jobPageSize;
-
-//    private final ExecutorService executorService = Executors.newFixedThreadPool(3);
-    private ExecutorService executorService;
+    @Value("${jfc.global-concurrency-limit}")
+    private int globalConcurrencyLimit;
 
     public BatchDispatcher(JobRepository jobRepository,
                            ToolConfigRepository toolConfigRepository,
@@ -46,118 +36,71 @@ public class BatchDispatcher {
         this.jobProducer = jobProducer;
     }
 
-    @PostConstruct
-    public void init() {
-        this.executorService = Executors.newFixedThreadPool(threadPoolSize);
-    }
+    @Scheduled(fixedRate = 2000)
+    public void dispatchJobs() throws JsonProcessingException {
+        LOGGER.info("=== Starting dispatch cycle ===");
 
-    @Scheduled(fixedRate = 10000)
-    public void dispatchJobs() {
-        LOGGER.info("Starting batch dispatch...");
+        int globalInProgress = jobRepository.countByStatus(JobStatus.IN_PROGRESS);
+        LOGGER.info("Total IN_PROGRESS jobs (all tools): {}", globalInProgress);
 
-        int pageNumber = 0;
-        Page<JobEntity> page;
-        do {
-            PageRequest pageRequest = PageRequest.of(pageNumber, jobPageSize);
-            page = jobRepository.findByStatus(JobStatus.NEW, pageRequest);
+        if (globalInProgress >= globalConcurrencyLimit) {
+            LOGGER.info("Global concurrency limit reached. No new jobs can be dispatched.");
+            return;
+        }
 
-            // If the page has no content, log and break out.
-            if (page.isEmpty()) {
-                LOGGER.info("No NEW jobs found on page {}. Nothing to dispatch.", pageNumber);
+        List<JobEntity> newJobs = jobRepository.findByStatus(JobStatus.NEW);
+        if (newJobs.isEmpty()) {
+            LOGGER.info("No NEW jobs available.");
+            return;
+        }
+        newJobs.sort(Comparator.comparing(JobEntity::getTimestampCreated));
+
+        int dispatchedCount = 0;
+
+        for (JobEntity job : newJobs) {
+            // global concurrency is at limit, break out entirely
+            if (globalInProgress >= globalConcurrencyLimit) {
+                LOGGER.info("Reached global concurrency limit while iterating jobs.");
                 break;
             }
 
-            // Get the list of NEW jobs from this page
-            List<JobEntity> newJobs = page.getContent();
-
-            // Group by toolId
-            Map<String, List<JobEntity>> jobsByTool = newJobs.stream()
-                    .collect(Collectors.groupingBy(JobEntity::getToolId));
-
-            // Submit each tool’s batch for concurrent processing
-            for (String toolId : jobsByTool.keySet()) {
-                executorService.submit(() -> processToolBatch(toolId, jobsByTool.get(toolId)));
-            }
-
-            LOGGER.info("Batch dispatch triggered for {} tool(s) on page {}.", jobsByTool.size(), pageNumber);
-
-            pageNumber++;
-
-        } while (page.hasNext());
-    }
-
-    // Runs every 10 seconds (for example)
-//    @Scheduled(fixedRate = 10000)
-//    public void dispatchJobs() throws JsonProcessingException {
-//        LOGGER.info("Starting batch dispatch...");
-//
-//        // Find all NEW jobs
-//        List<JobEntity> newJobs = jobRepository.findByStatus(JobStatus.NEW);
-//
-//        if (newJobs.isEmpty()) {
-//            LOGGER.info("No NEW jobs found. Nothing to dispatch.");
-//            return;
-//        }
-//
-//        Map<String, List<JobEntity>> jobsByTool = newJobs.stream()
-//                .collect(Collectors.groupingBy(JobEntity::getToolId));
-//
-//        for (String toolId : jobsByTool.keySet()) {
-//            executorService.submit(() -> processToolBatch(toolId, jobsByTool.get(toolId)));
-//        }
-//
-//        LOGGER.info("Batch dispatch triggered for {} tool(s).", jobsByTool.size());
-//    }
-    private void processToolBatch(String toolId, List<JobEntity> toolJobs) {
-        try {
+            String toolId = job.getToolId();
             ToolConfigEntity config = toolConfigRepository.findById(toolId).orElse(null);
             if (config == null) {
-                LOGGER.warn("No tool config found for tool: {}", toolId);
-                return;
+                LOGGER.warn("No config found for tool '{}'; skipping job {}", toolId, job.getJobId());
+                continue; // skip this job, maybe the next job belongs to a valid tool
             }
 
-            int maxConcurrent = config.getMaxConcurrentJobs();
-            String destinationTopic = config.getDestinationTopic();
+            int toolLimit = config.getMaxConcurrentJobs();
 
-            toolJobs.sort(Comparator.comparing(JobEntity::getPriority).reversed());
+            int toolInProgress = jobRepository.countByToolIdAndStatus(toolId, JobStatus.IN_PROGRESS);
 
-            List<JobEntity> batch = toolJobs.stream()
-                    .limit(maxConcurrent)
-                    .collect(Collectors.toList());
-
-            if (batch.isEmpty()) {
-                LOGGER.info("No jobs to dispatch for tool {}", toolId);
-                return;
+            if (toolInProgress >= toolLimit) {
+                LOGGER.info("Tool {} is at concurrency limit ({}). Cannot dispatch job {} right now.",
+                        toolId, toolLimit, job.getJobId());
+                continue;
             }
 
-            LOGGER.info("Dispatching {} jobs for tool {} on thread {}",
-                    batch.size(), toolId, Thread.currentThread().getName());
+            job.setStatus(JobStatus.IN_PROGRESS);
+            jobRepository.save(job);
 
-            List<Map<String, Object>> jobsInBatch = new ArrayList<>();
-            for (JobEntity job : batch) {
-                    Map<String, Object> jobData = new HashMap<>();
-                    jobData.put("jobId", job.getJobId());
-                    jobData.put("toolId", job.getToolId());
-                    jobData.put("payload", job.getPayload());
-                    jobData.put("priority", job.getPriority());
-                    jobsInBatch.add(jobData);
-                }
+            Map<String, Object> message = new HashMap<>();
+            message.put("jobId", job.getJobId());
+            message.put("toolId", job.getToolId());
+            message.put("payload", job.getPayload());
+            message.put("priority", job.getPriority());
 
-                Map<String, Object> batchMessage = new HashMap<>();
-                batchMessage.put("toolId", toolId);
-                batchMessage.put("jobs", jobsInBatch);
+            jobProducer.sendJobToTool(config.getDestinationTopic(), message);
 
-                jobProducer.sendJobToTool(destinationTopic, batchMessage);
+            dispatchedCount++;
+            globalInProgress++;
 
-                for (JobEntity job : batch) {
-                    job.setStatus(JobStatus.PENDING);
-                }
-                jobRepository.saveAll(batch);
+            LOGGER.info("Dispatched job {} for tool {}. (toolInProgress={} -> after increment, globalInProgress={})",
+                    job.getJobId(), toolId, toolInProgress, globalInProgress);
+        }
 
-                LOGGER.info("Finished dispatch for tool {} on thread {}", toolId, Thread.currentThread().getName());
-
-            } catch (Exception e) {
-                LOGGER.error("Error dispatching jobs for tool {}", toolId, e);
-            }
+        LOGGER.info("Dispatch cycle complete. Dispatched {} new jobs. Now {} total IN_PROGRESS.",
+                dispatchedCount, globalInProgress);
+        LOGGER.info("=== End of dispatch cycle ===");
     }
 }

@@ -3,8 +3,6 @@ package com.example.capstone.jfc.consumer;
 import com.example.capstone.jfc.model.JobEntity;
 import com.example.capstone.jfc.model.JobStatus;
 import com.example.capstone.jfc.repository.JobRepository;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.kafka.annotation.KafkaListener;

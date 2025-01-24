@@ -27,14 +27,14 @@ public class LoadTestRunner implements CommandLineRunner {
 
     @Override
     public void run(String... args) throws Exception {
-        // For demonstration, produce 10 random jobs on startup
-        LOGGER.info("Generating 10 random jobs to ingestion topic...");
+        LOGGER.info("Generating 50 random jobs to ingestion topic...");
         for (int i = 1; i <= 50; i++) {
             // Random job data
             String jobId = "job-" + UUID.randomUUID();
             String toolId = TOOLS.get(new Random().nextInt(TOOLS.size()));
             String payload = "{\"data\":\"Random payload " + i + "\"}";
-            int priority = new Random().nextInt(10) + 1; // 1–10
+//            int priority = new Random().nextInt(10) + 1; // 1–10
+            int priority = 1;
 
             Map<String, Object> message = new HashMap<>();
             message.put("jobId", jobId);

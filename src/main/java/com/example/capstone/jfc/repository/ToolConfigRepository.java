@@ -6,5 +6,4 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public interface ToolConfigRepository extends JpaRepository<ToolConfigEntity, String> {
-    // By default, JPA provides findById(toolId)
 }

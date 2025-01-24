@@ -12,9 +12,11 @@ import java.util.List;
 @Repository
 public interface JobRepository extends JpaRepository<JobEntity, String> {
 
-    Page<JobEntity> findByStatus(JobStatus status, Pageable pageable);
+//    Page<JobEntity> findByStatus(JobStatus status, Pageable pageable);
 
-    // Find jobs by status
     List<JobEntity> findByStatus(JobStatus status);
 
+    int countByToolIdAndStatus(String toolId, JobStatus status); //change
+
+    int countByStatus(JobStatus jobStatus);
 }
