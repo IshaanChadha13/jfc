@@ -36,7 +36,7 @@ public class BatchDispatcher {
         this.jobProducer = jobProducer;
     }
 
-    @Scheduled(fixedRate = 2000)
+    @Scheduled(fixedRate = 1000)
     public void dispatchJobs() throws JsonProcessingException {
         LOGGER.info("=== Starting dispatch cycle ===");
 

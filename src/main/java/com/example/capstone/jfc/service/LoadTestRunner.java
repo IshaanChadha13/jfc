@@ -16,7 +16,9 @@ public class LoadTestRunner implements CommandLineRunner {
     private final String ingestionTopic;
 
     // Potential tool IDs recognized by JFC
-    private static final List<String> TOOLS = Arrays.asList("ToolA", "ToolB", "ToolC");
+//    private static final List<String> TOOLS = Arrays.asList("ToolA", "ToolB", "ToolC");
+    private static final List<String> TOOLS = Arrays.asList("A", "B", "C");
+
 
     public LoadTestRunner(KafkaTemplate<String, Object> kafkaTemplate,
                           // Read from application.yml
